@@ -1,0 +1,73 @@
+name: Update and release GeoIP for CN
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+  schedule:
+    - cron: "0 2 */3 * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: geoip-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Generate, verify, and publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: go.sum
+
+      - name: Generate and verify release artifacts
+        run: make package
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: data-${{ github.run_id }}
+          name: GeoIP for CN #${{ github.run_number }}
+          body: |
+            Automated IPv4 and IPv6 database update.
+            Source commit: ${{ github.sha }}
+          make_latest: true
+          fail_on_unmatched_files: true
+          overwrite_files: true
+          files: |
+            release-artifacts/Country.mmdb
+            release-artifacts/Country-IPv4.mmdb
+            release-artifacts/Country-IPv6.mmdb
+            release-artifacts/CN-ip-cidr.txt
+            release-artifacts/CN-ipv6-cidr.txt
+            release-artifacts/CN-ipv4-and-ipv6-cidr.txt
+
+      - name: Publish release branch for jsDelivr
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          branch: release
+          folder: release-artifacts
+          clean: true
+          single-commit: true
+          commit-message: "Update GeoIP data from ${{ github.sha }}"
+
+      - name: Delete old releases
+        uses: dev-drprasad/delete-older-releases@v0.3.4
+        with:
+          keep_latest: 5
+          delete_tags: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
