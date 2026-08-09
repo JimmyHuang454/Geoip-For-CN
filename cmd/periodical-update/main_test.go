@@ -298,7 +298,10 @@ func TestGenerateAndVerifyArtifacts(t *testing.T) {
 	if got, want := readTestFile(t, filepath.Join(dist, "CN-ipv6-cidr.txt")), "2400:3200::/32\n2400:3210::/32\n"; got != want {
 		t.Fatalf("IPv6 CIDRs = %q, want %q", got, want)
 	}
-	for _, name := range []string{"Country-IPv4.mmdb", "Country.mmdb", "Country-IPv6.mmdb"} {
+	for _, name := range []string{
+		"Country-IPv4.mmdb", "Country.mmdb", "Country-IPv6.mmdb",
+		"cn-ipv4.srs", "cn.srs", "cn-ipv6.srs",
+	} {
 		info, err := os.Stat(filepath.Join(dist, name))
 		if err != nil {
 			t.Fatalf("stat %s: %v", name, err)

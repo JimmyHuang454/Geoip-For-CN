@@ -6,6 +6,9 @@ RELEASE_FILES := \
 	Country.mmdb \
 	Country-IPv4.mmdb \
 	Country-IPv6.mmdb \
+	cn.srs \
+	cn-ipv4.srs \
+	cn-ipv6.srs \
 	CN-ip-cidr.txt \
 	CN-ipv6-cidr.txt \
 	CN-ipv4-and-ipv6-cidr.txt

@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"geoip-for-cn/internal/geodb"
+	srsrules "geoip-for-cn/internal/srs"
 	"github.com/oschwald/maxminddb-golang"
 )
 
@@ -95,6 +96,79 @@ func verifyArtifacts(dist string) error {
 		if err := verifyDatabase(check.database, check.ipVersion, check.included, check.excluded); err != nil {
 			return err
 		}
+	}
+	srsChecks := []struct {
+		ruleSet  string
+		included []string
+		excluded []string
+	}{
+		{filepath.Join(dist, "cn-ipv4.srs"), []string{ipv4CIDRs}, []string{ipv6CIDRs}},
+		{filepath.Join(dist, "cn.srs"), []string{ipv4CIDRs, ipv6CIDRs}, nil},
+		{filepath.Join(dist, "cn-ipv6.srs"), []string{ipv6CIDRs}, []string{ipv4CIDRs}},
+	}
+	for _, check := range srsChecks {
+		if err := verifySRS(check.ruleSet, check.included, check.excluded); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func verifySRS(ruleSetPath string, included, excluded []string) error {
+	file, err := os.Open(ruleSetPath)
+	if err != nil {
+		return fmt.Errorf("open %s: %w", ruleSetPath, err)
+	}
+	defer file.Close()
+	ruleSet, err := srsrules.Read(file)
+	if err != nil {
+		return fmt.Errorf("read %s: %w", ruleSetPath, err)
+	}
+	for _, cidrPath := range included {
+		if err := verifySRSCIDRFile(ruleSet, cidrPath, true, true); err != nil {
+			return fmt.Errorf("verify %s: %w", ruleSetPath, err)
+		}
+	}
+	for _, cidrPath := range excluded {
+		if err := verifySRSCIDRFile(ruleSet, cidrPath, false, false); err != nil {
+			return fmt.Errorf("verify %s: %w", ruleSetPath, err)
+		}
+	}
+	return nil
+}
+
+func verifySRSCIDRFile(ruleSet *srsrules.RuleSet, path string, wantFound, checkAll bool) error {
+	file, err := os.Open(path)
+	if err != nil {
+		return fmt.Errorf("open %s: %w", path, err)
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	checked := 0
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		prefix, err := netip.ParsePrefix(line)
+		if err != nil {
+			return fmt.Errorf("parse %s: %w", path, err)
+		}
+		found := ruleSet.Contains(prefix.Addr())
+		if found != wantFound {
+			return fmt.Errorf("match %s found=%t, want %t", prefix, found, wantFound)
+		}
+		checked++
+		if !checkAll {
+			break
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("read %s: %w", path, err)
+	}
+	if checked == 0 {
+		return fmt.Errorf("%s contains no CIDRs", path)
 	}
 	return nil
 }
@@ -217,6 +291,19 @@ func generate(ctx context.Context, dist string) error {
 			DisableIPv4Aliasing: artifact.disableIPv4Aliasing,
 		}); err != nil {
 			return fmt.Errorf("generate %s: %w", filepath.Base(artifact.database), err)
+		}
+	}
+	srsArtifacts := []struct {
+		cidrs   string
+		ruleSet string
+	}{
+		{ipv4CIDRs, filepath.Join(dist, "cn-ipv4.srs")},
+		{dualStackCIDRs, filepath.Join(dist, "cn.srs")},
+		{ipv6CIDRs, filepath.Join(dist, "cn-ipv6.srs")},
+	}
+	for _, artifact := range srsArtifacts {
+		if err := srsrules.Generate(artifact.cidrs, artifact.ruleSet); err != nil {
+			return fmt.Errorf("generate %s: %w", filepath.Base(artifact.ruleSet), err)
 		}
 	}
 	return nil
